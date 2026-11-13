@@ -10,4 +10,6 @@ public sealed class AuctionLifecycleConsumerSettings
     public int RetryDelayMs { get; set; } = 1000;
     public string AutoOffsetReset { get; set; } = "Earliest";
     public bool Enabled { get; set; } = true;
+    // Si el bucle pasa este tiempo sin consultar Kafka, se da por colgado y se abre otro consumidor.
+    public int StallTimeoutMs { get; set; } = 120000;
 }

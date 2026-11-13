@@ -18,14 +18,26 @@ public sealed class AuctionLifecycleConsumerTests : IDisposable
 
     private AuctionLifecycleConsumer CreateConsumer(
         FakeConsumer fake, string bootstrapServers = "localhost:9092", bool enabled = true)
+        => CreateConsumer(() => fake.Instance, bootstrapServers, enabled);
+
+    private AuctionLifecycleConsumer CreateConsumer(
+        Func<IConsumer<string?, string>> consumerFactory,
+        string bootstrapServers = "localhost:9092",
+        bool enabled = true,
+        int stallTimeoutMs = 120000)
     {
-        var settings = Options.Create(
-            new AuctionLifecycleConsumerSettings { MaxAttempts = 3, RetryDelayMs = 0, Enabled = enabled });
+        var settings = Options.Create(new AuctionLifecycleConsumerSettings
+        {
+            MaxAttempts = 3,
+            RetryDelayMs = 0,
+            Enabled = enabled,
+            StallTimeoutMs = stallTimeoutMs
+        });
         var processor = new AuctionLifecycleMessageProcessor(
             _host.ScopeFactory, _deadLetters, settings, NullLogger<AuctionLifecycleMessageProcessor>.Instance);
 
         return new AuctionLifecycleConsumer(
-            () => fake.Instance,
+            consumerFactory,
             processor,
             Options.Create(new KafkaSettings { BootstrapServers = bootstrapServers }),
             settings,
@@ -140,6 +152,43 @@ public sealed class AuctionLifecycleConsumerTests : IDisposable
         await consumer.StopAsync(CancellationToken.None);
 
         Assert.Empty(fake.Proxy.Calls);
+    }
+
+    [Fact]
+    public async Task StartAsync_OpensANewConsumerWhenTheLoopStopsPolling()
+    {
+        var invoiceId = await SeedConsistentInvoiceAsync();
+        var stuck = new FakeConsumer { Hangs = true };
+        var healthy = new FakeConsumer().Enqueue(AuctionMessages.Event("AuctionPublished", invoiceId));
+        var opened = new Queue<FakeConsumer>([stuck, healthy]);
+        var consumer = CreateConsumer(() => (opened.Count > 0 ? opened.Dequeue() : healthy).Instance, stallTimeoutMs: 200);
+
+        await consumer.StartAsync(CancellationToken.None);
+        await WaitUntilAsync(() => healthy.Committed.Count == 1);
+        await consumer.StopAsync(CancellationToken.None);
+
+        var stored = await _host.Invoices.GetByIdAsync(InvoiceId.Of(invoiceId));
+        Assert.Equal(InvoiceStatus.PUBLISHED, stored!.Status);
+        Assert.Equal([AuctionMessages.Topic], stuck.SubscribedTopics);
+    }
+
+    [Fact]
+    public async Task StartAsync_OpensANewConsumerWhenTheLoopFails()
+    {
+        var invoiceId = await SeedConsistentInvoiceAsync();
+        var healthy = new FakeConsumer().Enqueue(AuctionMessages.Event("AuctionPublished", invoiceId));
+        var attempts = 0;
+        var consumer = CreateConsumer(() => ++attempts == 1
+            ? throw new KafkaException(ErrorCode.Local_Fatal)
+            : healthy.Instance);
+
+        await consumer.StartAsync(CancellationToken.None);
+        await WaitUntilAsync(() => healthy.Committed.Count == 1);
+        await consumer.StopAsync(CancellationToken.None);
+
+        Assert.Equal(2, attempts);
+        var stored = await _host.Invoices.GetByIdAsync(InvoiceId.Of(invoiceId));
+        Assert.Equal(InvoiceStatus.PUBLISHED, stored!.Status);
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)

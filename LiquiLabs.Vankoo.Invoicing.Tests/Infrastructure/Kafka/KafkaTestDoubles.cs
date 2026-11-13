@@ -74,6 +74,9 @@ public sealed class FakeConsumer
     /// <summary>Se ejecuta una vez cuando se agota el guion; el test lo usa para cancelar el bucle.</summary>
     public Action? OnExhausted { get; set; }
 
+    /// <summary>Si es true, Consume() no vuelve (hasta 10 s): simula un bucle colgado dentro de la librería.</summary>
+    public bool Hangs { get; init; }
+
     public FakeConsumer()
     {
         (Instance, Proxy) = RecordingProxy.Create<IConsumer<string?, string>>(Handle);
@@ -103,8 +106,13 @@ public sealed class FakeConsumer
 
     private (bool, object?) Handle(MethodInfo method, object?[] args)
     {
-        if (method.Name != "Consume" || args is not [CancellationToken token])
+        if (method.Name != "Consume")
             return (false, null);
+        if (Hangs)
+        {
+            Thread.Sleep(TimeSpan.FromSeconds(10));
+            return (true, null);
+        }
 
         object? next = null;
         lock (_gate)
@@ -123,8 +131,19 @@ public sealed class FakeConsumer
 
         OnExhausted?.Invoke();
         OnExhausted = null;
-        token.WaitHandle.WaitOne(TimeSpan.FromSeconds(5));
-        token.ThrowIfCancellationRequested();
+        switch (args)
+        {
+            case [CancellationToken token]:
+                token.WaitHandle.WaitOne(TimeSpan.FromSeconds(5));
+                token.ThrowIfCancellationRequested();
+                break;
+            case [TimeSpan timeout]:
+                // Vuelve sin mensaje, como Consume(timeout) con el topic en silencio, pero sin
+                // hacer esperar al test todo el segundo.
+                Thread.Sleep(TimeSpan.FromMilliseconds(Math.Min(timeout.TotalMilliseconds, 20)));
+                break;
+        }
+
         return (true, null);
     }
 }
