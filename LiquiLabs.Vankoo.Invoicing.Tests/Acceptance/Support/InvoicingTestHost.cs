@@ -61,6 +61,8 @@ public sealed class InvoicingTestHost : IDisposable
     /// <summary>Para armar un controlador con el mismo MediatR que los escenarios.</summary>
     public IServiceProvider Services => _provider;
 
+    public IServiceScopeFactory ScopeFactory => _provider.GetRequiredService<IServiceScopeFactory>();
+
     public async Task<TResponse> SendAsync<TResponse>(IRequest<TResponse> request)
     {
         await using var scope = _provider.CreateAsyncScope();
