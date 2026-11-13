@@ -1,5 +1,7 @@
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.OcrProcessing.ProcessOcrSynchronously;
+using LiquiLabs.Vankoo.Invoicing.Application.Commands.RecordMypeKycStatus;
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.UploadInvoice;
+using LiquiLabs.Vankoo.Invoicing.Domain.Exceptions;
 using LiquiLabs.Vankoo.Invoicing.Application.IntegrationEvents;
 using LiquiLabs.Vankoo.Invoicing.Application.Internal.Ocr;
 using LiquiLabs.Vankoo.Invoicing.Application.Resources;
@@ -25,6 +27,7 @@ public sealed class SmartInvoiceUploadSteps
     private OcrExtractionResult? _extraction;
     private string? _invoiceId;
     private InvoiceDetailsResponse? _details;
+    private MypeNotVerifiedException? _refusal;
 
     public SmartInvoiceUploadSteps(InvoicingTestHost host)
     {
@@ -36,6 +39,24 @@ public sealed class SmartInvoiceUploadSteps
     {
         // El gateway valida el JWT y reenvía el id del usuario en X-User-Id; ese valor es el MypeId.
         _mypeId = Guid.NewGuid().ToString();
+    }
+
+    [Given("the business owner's company KYC is {string}")]
+    public async Task GivenTheCompanyKycIs(string kycStatus)
+    {
+        // UNKNOWN: Profile todavía no avisó de ningún estado para esta MYPE.
+        if (kycStatus == "UNKNOWN") return;
+
+        var status = kycStatus switch
+        {
+            "PENDING" => MypeKycStatus.Pending,
+            "IN_REVIEW" => MypeKycStatus.InReview,
+            "VERIFIED" => MypeKycStatus.Verified,
+            "REJECTED" => MypeKycStatus.Rejected,
+            _ => throw new ArgumentOutOfRangeException(nameof(kycStatus), kycStatus, "Unknown KYC status")
+        };
+        await _host.SendAsync(new RecordMypeKycStatusCommand(
+            _mypeId, Guid.NewGuid().ToString(), status, DateTime.UtcNow));
     }
 
     [Given("the business owner has a readable PDF invoice")]
@@ -88,6 +109,12 @@ public sealed class SmartInvoiceUploadSteps
         });
     }
 
+    [When("the business owner tries to upload the invoice")]
+    public async Task WhenTheBusinessOwnerTriesToUploadTheInvoice()
+    {
+        _refusal = await Assert.ThrowsAsync<MypeNotVerifiedException>(WhenTheBusinessOwnerUploadsTheInvoice);
+    }
+
     [When("the system finishes the extraction and initial validation")]
     public async Task WhenTheSystemFinishesTheExtraction()
     {
@@ -109,6 +136,20 @@ public sealed class SmartInvoiceUploadSteps
     {
         Assert.NotNull(_details);
         Assert.Contains(_details.ValidationIssues, issue => issue.Code == issueCode);
+    }
+
+    [Then("the upload is refused with {string}")]
+    public void ThenTheUploadIsRefusedWith(string errorCode)
+    {
+        Assert.NotNull(_refusal);
+        Assert.Equal(errorCode, _refusal.ErrorCode);
+    }
+
+    [Then("no invoice is stored")]
+    public void ThenNoInvoiceIsStored()
+    {
+        Assert.Empty(_host.Invoices.Invoices);
+        Assert.Empty(_host.OcrTasks.EnqueuedInvoiceIds);
     }
 
     [Then("the invoice is not sent to the auction")]

@@ -29,6 +29,7 @@ public sealed class InvoicesController : ControllerBase
     [RequestSizeLimit(10 * 1024 * 1024)]
     [ProducesResponseType(typeof(InvoiceResource), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> UploadInvoice(
         [FromForm] UploadInvoiceResource request,
