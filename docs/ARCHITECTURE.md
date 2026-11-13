@@ -114,6 +114,10 @@ que exista un caso de uso que las necesite.
 
 `OcrTaskWorker` (`Infrastructure/Workers/`) es un `BackgroundService` que hace polling a MongoDB buscando tareas OCR pendientes. Su configuración está en `OcrWorkerSettings`. No bloquea el pipeline HTTP.
 
+`ProfileKycStatusConsumer` (`Infrastructure/Brokers/Kafka/`) es un `BackgroundService` que lee `CompanyKycStatusChanged` v1 de `vankoo.profile.events` (grupo `invoicing-profile-kyc-v1`, desde `Earliest`; contrato en `docs/contracts/profile-events.md` de vankoo-profile-service). Lee con `KafkaProfileEventStream` (detrás de `IProfileEventStream`, para probar el bucle sin broker) y aplica cada mensaje con `ProfileKycMessageHandler`, que manda `RecordMypeKycStatusCommand`, que guarda el último estado KYC de la MYPE en la colección `MypeVerifications` (solo si es más nuevo que el que hay, por `occurredAt`), y reintenta con espera creciente (1 s hasta 60 s) si no puede guardarlo. El offset se confirma después. Los demás eventos de Profile se saltan. Su configuración está en `KafkaSettings` (`ProfileEventsTopic`, `ProfileKycGroupId`, `ProfileKycAutoOffsetReset`, `ProfileKycConsumerEnabled`).
+
+`UploadInvoiceCommandHandler` rechaza con **403 `MYPE_NOT_VERIFIED`** (`ForbiddenOperationException`) a una MYPE cuyo último estado no es `VERIFIED`, también si Profile nunca avisó de ninguno.
+
 ---
 
 ## Infraestructura Docker

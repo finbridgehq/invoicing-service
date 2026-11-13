@@ -133,6 +133,7 @@ builder.Services.AddValidatorsFromAssembly(typeof(Program).Assembly);
 // 8. REPOSITORIOS, SERVICIOS DE DOMINIO E INFRAESTRUCTURA
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
 builder.Services.AddScoped<IOcrTaskRepository, OcrTaskRepository>();
+builder.Services.AddScoped<IMypeVerificationRepository, MypeVerificationRepository>();
 builder.Services.AddScoped<IOcrService, AzureOcrService>();
 builder.Services.AddSingleton<InvoiceFileInspector>();
 builder.Services.AddSingleton<InvoiceLineItemResolver>();
@@ -142,6 +143,13 @@ builder.Services.AddSingleton<AzureOcrMapper>();
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IEventBus, KafkaEventBus>();
 builder.Services.AddHostedService<OcrTaskWorker>();
+builder.Services.AddSingleton<ProfileKycMessageHandler>(sp => new ProfileKycMessageHandler(
+    sp.GetRequiredService<IServiceScopeFactory>(),
+    sp.GetRequiredService<ILogger<ProfileKycMessageHandler>>()));
+builder.Services.AddSingleton<Func<IProfileEventStream>>(sp => () => new KafkaProfileEventStream(
+    sp.GetRequiredService<IOptions<KafkaSettings>>().Value,
+    sp.GetRequiredService<ILogger<KafkaProfileEventStream>>()));
+builder.Services.AddHostedService<ProfileKycStatusConsumer>();
 
 var app = builder.Build();
 
