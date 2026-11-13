@@ -21,8 +21,10 @@ public sealed class GetInvoiceByIdHandler
         CancellationToken cancellationToken)
     {
         var invoiceId = InvoiceId.Of(query.InvoiceId);
-        var invoice = await _invoiceRepository.GetByIdAsync(invoiceId, cancellationToken)
-                      ?? throw new InvoiceNotFoundException(invoiceId.Value);
+        var invoice = await _invoiceRepository.GetByIdAsync(invoiceId, cancellationToken);
+        // 404 y no 403: decir «es de otra MYPE» confirmaría que ese id existe.
+        if (invoice is null || invoice.MypeId != MypeId.Of(query.MypeId))
+            throw new InvoiceNotFoundException(invoiceId.Value);
 
         return InvoiceDetailsResponse.FromInvoice(invoice);
     }

@@ -4,6 +4,8 @@ using LiquiLabs.Vankoo.Invoicing.Application.Commands.OcrProcessing.ProcessOcrSy
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.UploadInvoice;
 using LiquiLabs.Vankoo.Invoicing.Application.Queries.DownloadInvoiceFile;
 using LiquiLabs.Vankoo.Invoicing.Application.Queries.GetInvoiceById;
+using LiquiLabs.Vankoo.Invoicing.Application.Queries.ListMyInvoices;
+using LiquiLabs.Vankoo.Invoicing.Application.Resources;
 using LiquiLabs.Vankoo.Invoicing.Interfaces.Rest.Dto.Requests;
 using LiquiLabs.Vankoo.Invoicing.Interfaces.Rest.Dto.Responses;
 using MediatR;
@@ -35,10 +37,8 @@ public sealed class InvoicesController : ControllerBase
         [FromForm] UploadInvoiceResource request,
         CancellationToken cancellationToken)
     {
-        // El API Gateway valida el JWT y agrega este header (BearerAuthorizationRequest
-        // en vankoo-api-gateway) antes de reenviar — sin esa capa, no llega.
-        var mypeId = Request.Headers["X-User-Id"].ToString();
-        if (string.IsNullOrWhiteSpace(mypeId))
+        var mypeId = CallerMypeId();
+        if (mypeId is null)
             return Unauthorized();
 
         await using var stream = request.File.OpenReadStream();
@@ -59,12 +59,41 @@ public sealed class InvoicesController : ControllerBase
             new InvoiceResource { InvoiceId = invoiceId });
     }
 
+    [HttpGet]
+    [ProducesResponseType(typeof(InvoicePageResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ListMyInvoices(
+        [FromQuery] string? search,
+        [FromQuery] string? status,
+        [FromQuery] DateOnly? from,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = ListMyInvoicesQuery.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var mypeId = CallerMypeId();
+        if (mypeId is null)
+            return Unauthorized();
+
+        var response = await _mediator.Send(
+            new ListMyInvoicesQuery(mypeId, search, status, from, page, pageSize),
+            cancellationToken);
+        return Ok(response);
+    }
+
     [HttpGet("{id}")]
+    [ProducesResponseType(typeof(InvoiceDetailsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetInvoiceById(
         [FromRoute] string id,
         CancellationToken cancellationToken)
     {
-        var response = await _mediator.Send(new GetInvoiceByIdQuery(id), cancellationToken);
+        var mypeId = CallerMypeId();
+        if (mypeId is null)
+            return Unauthorized();
+
+        var response = await _mediator.Send(new GetInvoiceByIdQuery(id, mypeId), cancellationToken);
         return Ok(response);
     }
 
@@ -75,7 +104,11 @@ public sealed class InvoicesController : ControllerBase
         [FromRoute] string id,
         CancellationToken cancellationToken)
     {
-        var result = await _mediator.Send(new DownloadInvoiceFileQuery(id), cancellationToken);
+        var mypeId = CallerMypeId();
+        if (mypeId is null)
+            return Unauthorized();
+
+        var result = await _mediator.Send(new DownloadInvoiceFileQuery(id, mypeId), cancellationToken);
         return File(result.Stream, result.ContentType, result.FileName);
     }
 
@@ -120,5 +153,13 @@ public sealed class InvoicesController : ControllerBase
             new ProcessOcrSynchronouslyCommand(id),
             cancellationToken);
         return Ok(response);
+    }
+
+    // El API Gateway valida el JWT y agrega este header (BearerAuthorizationRequest
+    // en vankoo-api-gateway) antes de reenviar — sin esa capa, no llega.
+    private string? CallerMypeId()
+    {
+        var mypeId = Request.Headers["X-User-Id"].ToString();
+        return string.IsNullOrWhiteSpace(mypeId) ? null : mypeId;
     }
 }
