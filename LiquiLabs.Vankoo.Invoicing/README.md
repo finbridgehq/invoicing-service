@@ -170,7 +170,7 @@ Los dos consumidores leen desde el principio con un grupo nuevo (`Earliest`) y c
 - un evento de una factura que ya no existe se salta;
 - un mensaje mal formado, o uno que no encaja con el estado de la factura, se manda tras 3 intentos a `invoicing.auction-lifecycle.dlq`.
 
-Se apaga con `AuctionLifecycleConsumerSettings:Enabled=false`.
+Se apaga con `AuctionLifecycleConsumerSettings:Enabled=false`. Si deja de consultar Kafka durante `StallTimeoutMs` (2 min) o termina por un error, el servicio lo registra como error y abre un consumidor nuevo.
 
 La documentación interactiva (Scalar) está disponible en entornos no productivos:
 
