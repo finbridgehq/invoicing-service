@@ -144,9 +144,13 @@ Base path: `http://localhost:8082/api/v1`
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `POST` | `/invoices` | Sube una factura (multipart/form-data) |
+| `POST` | `/invoices` | Sube una factura (multipart/form-data). 403 `MYPE_NOT_VERIFIED` si la MYPE no pasó el KYC |
+| `GET` | `/invoices` | Las facturas de la MYPE que llama, la más reciente primero. Filtros opcionales: `search` (número, RUC o nombre del pagador), `status` (un `InvoiceStatus`), `from` (emitidas desde ese día, `YYYY-MM-DD`), y `page`/`pageSize` (10 por defecto, 100 como máximo). Responde `{items, page, pageSize, totalItems}` |
+| `GET` | `/invoices/{id}` | El detalle de una factura |
 | `GET` | `/invoices/{id}/file` | Descarga el archivo de una factura |
 | `POST` | `/invoices/{id}/ocr/sync` | Procesa OCR de forma síncrona |
+
+Las rutas de lectura (`GET`) y la subida usan la cabecera `X-User-Id`, que pone el gateway tras validar el JWT, como `MypeId`: sin ella responden 401. **Una factura de otra MYPE responde 404**, no 403, para no confirmar que ese id existe.
 
 La documentación interactiva (Scalar) está disponible en entornos no productivos:
 
