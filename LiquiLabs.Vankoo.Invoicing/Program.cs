@@ -10,6 +10,7 @@ using LiquiLabs.Vankoo.Invoicing.Domain.Services;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Brokers.Kafka;
 using Amazon.Runtime;
 using Amazon.S3;
+using Confluent.Kafka;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Configuration.Settings;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.ExternalServices.Ocr.Azure;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.ExternalServices.Ocr.Azure.Mappers;
@@ -44,6 +45,7 @@ builder.Services.Configure<DbSettings>(builder.Configuration.GetSection("DbSetti
 builder.Services.Configure<TokenSettings>(builder.Configuration.GetSection("TokenSettings"));
 builder.Services.Configure<AzureOcrSettings>(builder.Configuration.GetSection("AzureOcrSettings"));
 builder.Services.Configure<KafkaSettings>(builder.Configuration.GetSection("KafkaSettings"));
+builder.Services.Configure<AuctionLifecycleConsumerSettings>(builder.Configuration.GetSection("AuctionLifecycleConsumerSettings"));
 builder.Services.Configure<OcrWorkerSettings>(builder.Configuration.GetSection("OcrWorkerSettings"));
 builder.Services.Configure<MinioSettings>(builder.Configuration.GetSection("MinioSettings"));
 builder.Services.Configure<AwsS3Settings>(builder.Configuration.GetSection("AwsS3Settings"));
@@ -146,6 +148,36 @@ builder.Services.AddScoped<OcrResultProcessor>();
 builder.Services.AddSingleton<AzureOcrMapper>();
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IEventBus, KafkaEventBus>();
+builder.Services.AddSingleton<IAuctionLifecycleDeadLetterPublisher>(sp =>
+{
+    var kafka = sp.GetRequiredService<IOptions<KafkaSettings>>().Value;
+    var producer = new ProducerBuilder<string?, string>(new ProducerConfig
+    {
+        BootstrapServers = kafka.BootstrapServers,
+        ClientId = $"{kafka.ClientId}-dlq",
+        Acks = Enum.Parse<Acks>(kafka.Acks, ignoreCase: true),
+        EnableIdempotence = kafka.EnableIdempotence,
+        MessageTimeoutMs = kafka.MessageTimeoutMs,
+        MessageSendMaxRetries = kafka.Retries
+    }).Build();
+    return new AuctionLifecycleDeadLetterPublisher(
+        producer, sp.GetRequiredService<IOptions<AuctionLifecycleConsumerSettings>>());
+});
+builder.Services.AddSingleton<Func<IConsumer<string?, string>>>(sp => () =>
+{
+    var kafka = sp.GetRequiredService<IOptions<KafkaSettings>>().Value;
+    var consumerSettings = sp.GetRequiredService<IOptions<AuctionLifecycleConsumerSettings>>().Value;
+    return new ConsumerBuilder<string?, string>(new ConsumerConfig
+    {
+        BootstrapServers = kafka.BootstrapServers,
+        GroupId = consumerSettings.GroupId,
+        ClientId = $"{kafka.ClientId}-consumer",
+        EnableAutoCommit = false,
+        AutoOffsetReset = Enum.Parse<AutoOffsetReset>(consumerSettings.AutoOffsetReset, ignoreCase: true)
+    }).Build();
+});
+builder.Services.AddSingleton<AuctionLifecycleMessageProcessor>();
+builder.Services.AddHostedService<AuctionLifecycleConsumer>();
 builder.Services.AddHostedService<OcrTaskWorker>();
 builder.Services.AddSingleton<ProfileKycMessageHandler>(sp => new ProfileKycMessageHandler(
     sp.GetRequiredService<IServiceScopeFactory>(),
