@@ -10,6 +10,7 @@ Microservicio de gestión de facturas dentro del ecosistema **Vankoo**. Permite 
 - Extraer datos estructurados mediante OCR asíncrono (Azure AI)
 - Persistir facturas y tareas OCR en MongoDB
 - Publicar eventos de integración (Kafka) al completarse el procesamiento
+- Seguir a la factura después de riesgo y la subasta, escuchando los eventos de Investment
 - Registrarse en Eureka para ser descubierto por el API Gateway
 
 ---
@@ -152,6 +153,24 @@ Base path: `http://localhost:8082/api/v1`
 | `POST` | `/invoices/{id}/review` | La MYPE confirma, o corrige, los datos de una factura en `REQUIRES_REVIEW`: `{series, number, issueDate, dueDate, issuerRuc, payerRuc, subtotal, tax, total}`, con fechas en `YYYY-MM-DD`. Se vuelve a validar sin mirar la confianza del OCR ni los ítems. Si cuadra, pasa a `CONSISTENCY_PASSED` y se publica a riesgo como una lectura limpia; si no, queda en revisión con los nuevos avisos, o en `NOT_ELIGIBLE`. 422 `INVOICE_INVALID_STATE` si la factura no está en revisión |
 
 Todas las rutas sobre facturas (subir, listar, ver, descargar, borrar y releer con OCR) usan la cabecera `X-User-Id`, que pone el gateway tras validar el JWT, como `MypeId`: sin ella responden 401. **Una factura de otra MYPE responde 404**, no 403, para no confirmar que ese id existe. El `OcrTaskWorker` relee la cola sin MYPE, porque no la llama nadie desde fuera.
+
+## Eventos que consume
+
+| Tema | Grupo | Evento | Efecto en la factura |
+|---|---|---|---|
+| `vankoo.profile.events` | `invoicing-profile-kyc-v1` | `CompanyKycStatusChanged` | Guarda el estado KYC de la MYPE, que decide si puede subir facturas |
+| `investment.auction-lifecycle.v1` | `invoicing-auction-lifecycle-v1` | `AuctionEvaluated` | `CONSISTENCY_PASSED` → `APPROVED`: riesgo la calificó y le toca a la MYPE aceptar la oferta |
+| `investment.auction-lifecycle.v1` | `invoicing-auction-lifecycle-v1` | `AuctionRejected` | `CONSISTENCY_PASSED` → `NOT_ELIGIBLE`: riesgo no la financia. El motivo lo guarda y lo muestra Investment |
+| `investment.auction-lifecycle.v1` | `invoicing-auction-lifecycle-v1` | `AuctionPublished` | `APPROVED` (o `CONSISTENCY_PASSED`) → `PUBLISHED`: ya está con los inversionistas |
+
+Con esto el filtro `status` de `GET /invoices` encuentra las facturas aprobadas, en subasta y no elegibles. El contrato de los eventos de subasta es de Investment (`docs/contracts/auction-lifecycle/v1` en su repo); Invoicing ignora los demás tipos.
+
+Los dos consumidores leen desde el principio con un grupo nuevo (`Earliest`) y confirman cada mensaje solo después de aplicarlo. En el de subastas:
+- un evento repetido, o uno que llega con la factura ya más adelante, no cambia nada;
+- un evento de una factura que ya no existe se salta;
+- un mensaje mal formado, o uno que no encaja con el estado de la factura, se manda tras 3 intentos a `invoicing.auction-lifecycle.dlq`.
+
+Se apaga con `AuctionLifecycleConsumerSettings:Enabled=false`.
 
 La documentación interactiva (Scalar) está disponible en entornos no productivos:
 
