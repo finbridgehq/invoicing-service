@@ -25,6 +25,7 @@ public sealed class InvoicingTestHost : IDisposable
     public StubOcrService Ocr { get; } = new();
     public RecordingEventBus EventBus { get; } = new();
     public InMemoryOcrTaskRepository OcrTasks { get; } = new();
+    public InMemoryMypeVerificationRepository MypeVerifications { get; } = new();
 
     public InvoicingTestHost()
     {
@@ -44,6 +45,7 @@ public sealed class InvoicingTestHost : IDisposable
         services.AddSingleton<IOcrService>(Ocr);
         services.AddSingleton<IEventBus>(EventBus);
         services.AddSingleton<IOcrTaskRepository>(OcrTasks);
+        services.AddSingleton<IMypeVerificationRepository>(MypeVerifications);
         services.AddSingleton<InvoiceFileInspector>();
         services.AddSingleton<InvoiceLineItemResolver>();
         services.AddSingleton<InvoiceConsistencyValidator>();
@@ -59,6 +61,13 @@ public sealed class InvoicingTestHost : IDisposable
         await using var scope = _provider.CreateAsyncScope();
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
         return await mediator.Send(request);
+    }
+
+    public async Task SendAsync(IRequest request)
+    {
+        await using var scope = _provider.CreateAsyncScope();
+        var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+        await mediator.Send(request);
     }
 
     public void Dispose() => _provider.Dispose();

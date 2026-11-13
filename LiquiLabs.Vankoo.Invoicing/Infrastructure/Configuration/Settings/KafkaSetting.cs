@@ -10,4 +10,10 @@ public sealed class KafkaSettings
     public string Acks { get; set; } = string.Empty;
     public bool EnableIdempotence { get; set; } = true;
     public int Retries { get; set; }
+    public string ProfileEventsTopic { get; set; } = "vankoo.profile.events";
+    public string ProfileKycGroupId { get; set; } = "invoicing-profile-kyc-v1";
+    // Earliest: el tópico de Profile puede crearse después de que arranque Invoicing, y un grupo
+    // nuevo en Latest se saltaría los primeros cambios de estado.
+    public string ProfileKycAutoOffsetReset { get; set; } = "Earliest";
+    public bool ProfileKycConsumerEnabled { get; set; } = true;
 }
