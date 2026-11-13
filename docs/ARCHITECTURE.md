@@ -108,6 +108,31 @@ Azure Blob Storage requeriría un adapter `AzureBlobStorageService` que implemen
 mapee el bucket a un container. No se agregan capacidades específicas de proveedor al puerto hasta
 que exista un caso de uso que las necesite.
 
+### Conexión con Kafka (local y Azure Event Hubs)
+
+Todos los clientes de Kafka (el bus de eventos, la DLQ, los dos consumidores y el health check) toman
+la conexión de `KafkaSettings` con `WithConnection` (`Infrastructure/Brokers/Kafka/KafkaClientConfigExtensions.cs`).
+En local es el Kafka del compose sin autenticación (`SecurityProtocol=Plaintext`). En Azure el broker es
+un namespace de **Azure Event Hubs** con endpoint de Kafka, y la Container App define:
+
+| Variable | Valor en Azure |
+|---|---|
+| `KafkaSettings__BootstrapServers` | `<namespace>.servicebus.windows.net:9093` |
+| `KafkaSettings__SecurityProtocol` | `SaslSsl` |
+| `KafkaSettings__SaslMechanism` | `Plain` |
+| `KafkaSettings__SaslUsername` | `$ConnectionString` (literal) |
+| `KafkaSettings__SaslPassword` | Cadena de conexión de la regla `invoicing` (secret de la Container App) |
+| `KafkaSettings__RequestTimeoutMs` | `60000` (Event Hubs exige más de 20 s) |
+| `KafkaSettings__MessageTimeoutMs` | `120000` (mayor que el anterior) |
+| `KafkaSettings__MetadataMaxAgeMs` | `180000` (Azure corta las conexiones inactivas a los 240 s) |
+| `KafkaSettings__SocketKeepaliveEnable` | `true` |
+
+Event Hubs no crea tópicos desde los clientes: todos los que usa Invoicing (`vankoo.profile.events`,
+`investment.auction-lifecycle.v1`, `invoicing.invoice-eligible-for-funding` y
+`invoicing.auction-lifecycle.dlq`) los crea la capa `messaging` de vankoo-infra. Por eso el health
+check de Kafka (`KafkaHealthCheck`) pide los metadatos del broker en lugar de publicar en un tópico
+de prueba.
+
 ---
 
 ## Workers en background
