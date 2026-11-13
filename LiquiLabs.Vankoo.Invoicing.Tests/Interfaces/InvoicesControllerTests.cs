@@ -5,6 +5,7 @@ using LiquiLabs.Vankoo.Invoicing.Application.Resources;
 using LiquiLabs.Vankoo.Invoicing.Domain.Exceptions;
 using LiquiLabs.Vankoo.Invoicing.Domain.ValueObjects;
 using LiquiLabs.Vankoo.Invoicing.Interfaces.Rest.Controllers;
+using LiquiLabs.Vankoo.Invoicing.Interfaces.Rest.Dto.Requests;
 using LiquiLabs.Vankoo.Invoicing.Tests.Acceptance.Support;
 using MediatR;
 using Microsoft.AspNetCore.Http;
@@ -46,6 +47,7 @@ public sealed class InvoicesControllerTests : IDisposable
         Assert.IsType<UnauthorizedResult>(await controller.DownloadInvoiceFile("any", default));
         Assert.IsType<UnauthorizedResult>(await controller.DeleteInvoice("any", default));
         Assert.IsType<UnauthorizedResult>(await controller.ProcessOcrSync("any", default));
+        Assert.IsType<UnauthorizedResult>(await controller.ConfirmInvoiceReview("any", null!, default));
     }
 
     [Fact]
@@ -74,5 +76,17 @@ public sealed class InvoicesControllerTests : IDisposable
         // A otra MYPE la factura no le existe, ni para releerla ni para borrarla.
         await Assert.ThrowsAsync<InvoiceNotFoundException>(() => Controller(Guid.NewGuid().ToString()).DeleteInvoice(id, default));
         Assert.IsType<NoContentResult>(await controller.DeleteInvoice(id, default));
+    }
+
+    [Fact]
+    public async Task ConfirmingTheReview_OfAnInvoiceThatIsNotTheCallers_ReadsAsNotFound()
+    {
+        var controller = Controller(Guid.NewGuid().ToString());
+        var issued = new DateOnly(2026, 10, 30);
+        var body = new ConfirmInvoiceReviewResource(
+            "E001", "2", issued, issued.AddDays(29), "20573093420", "20169004359", 5050m, 909m, 5959m);
+
+        await Assert.ThrowsAsync<InvoiceNotFoundException>(() =>
+            controller.ConfirmInvoiceReview(Guid.NewGuid().ToString(), body, default));
     }
 }

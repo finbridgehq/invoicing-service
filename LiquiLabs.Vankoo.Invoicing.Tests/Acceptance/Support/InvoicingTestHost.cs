@@ -3,6 +3,7 @@ using LiquiLabs.Vankoo.Invoicing.Application.Behaviors;
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.UploadInvoice;
 using LiquiLabs.Vankoo.Invoicing.Application.Interfaces;
 using LiquiLabs.Vankoo.Invoicing.Application.Internal.Files;
+using LiquiLabs.Vankoo.Invoicing.Application.Internal.Funding;
 using LiquiLabs.Vankoo.Invoicing.Application.Internal.Ocr;
 using LiquiLabs.Vankoo.Invoicing.Domain.Repositories;
 using LiquiLabs.Vankoo.Invoicing.Domain.Services;
@@ -49,6 +50,7 @@ public sealed class InvoicingTestHost : IDisposable
         services.AddSingleton<InvoiceFileInspector>();
         services.AddSingleton<InvoiceLineItemResolver>();
         services.AddSingleton<InvoiceConsistencyValidator>();
+        services.AddScoped<EligibleInvoicePublisher>();
         services.AddScoped<OcrResultProcessor>();
 
         _provider = services.BuildServiceProvider();

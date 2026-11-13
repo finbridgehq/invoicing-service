@@ -1,3 +1,4 @@
+using LiquiLabs.Vankoo.Invoicing.Application.Commands.ConfirmInvoiceReview;
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.DeleteAllInvoices;
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.DeleteInvoice;
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.OcrProcessing.ProcessOcrSynchronously;
@@ -163,6 +164,38 @@ public sealed class InvoicesController : ControllerBase
 
         var response = await _mediator.Send(
             new ProcessOcrSynchronouslyCommand(id, mypeId),
+            cancellationToken);
+        return Ok(response);
+    }
+
+    [HttpPost("{id}/review")]
+    [ProducesResponseType(typeof(InvoiceDetailsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> ConfirmInvoiceReview(
+        [FromRoute] string id,
+        [FromBody] ConfirmInvoiceReviewResource request,
+        CancellationToken cancellationToken)
+    {
+        var mypeId = CallerMypeId();
+        if (mypeId is null)
+            return Unauthorized();
+
+        var response = await _mediator.Send(
+            new ConfirmInvoiceReviewCommand(
+                id,
+                mypeId,
+                request.Series,
+                request.Number,
+                request.IssueDate,
+                request.DueDate,
+                request.IssuerRuc,
+                request.PayerRuc,
+                request.Subtotal,
+                request.Tax,
+                request.Total),
             cancellationToken);
         return Ok(response);
     }
