@@ -20,7 +20,7 @@ public enum InvoiceStatus
     /// <summary>Aprobada para subastarse en el marketplace</summary>
     APPROVED = 6,
 
-    /// <summary>Publicada y visible en el marketplace</summary> Creo q no???
+    /// <summary>Publicada como subasta en el marketplace (Investment emitió AuctionPublished)</summary>
     PUBLISHED = 7,
 
     /// <summary>Datos extraídos y consistentes; lista para evaluación de riesgo</summary>

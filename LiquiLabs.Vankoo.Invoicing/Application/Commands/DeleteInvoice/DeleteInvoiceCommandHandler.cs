@@ -22,8 +22,10 @@ public sealed class DeleteInvoiceCommandHandler : IRequestHandler<DeleteInvoiceC
     public async Task Handle(DeleteInvoiceCommand command, CancellationToken cancellationToken)
     {
         var invoiceId = InvoiceId.Of(command.InvoiceId);
-        var invoice = await _invoiceRepository.GetByIdAsync(invoiceId, cancellationToken)
-                      ?? throw new InvoiceNotFoundException(invoiceId.Value);
+        var invoice = await _invoiceRepository.GetByIdAsync(invoiceId, cancellationToken);
+        // 404 y no 403: decir «es de otra MYPE» confirmaría que ese id existe.
+        if (invoice is null || invoice.MypeId != MypeId.Of(command.MypeId))
+            throw new InvoiceNotFoundException(invoiceId.Value);
 
         await _storageService.DeleteAsync(invoice.Document.Key.Value, cancellationToken);
         await _invoiceRepository.DeleteAsync(invoice.Id, cancellationToken);

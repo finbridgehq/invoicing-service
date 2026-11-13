@@ -88,6 +88,45 @@ public sealed class InvoiceConsistencyValidatorTests
         Assert.Contains(result.Issues, issue => issue.Code == "LOW_OCR_CONFIDENCE");
     }
 
+    [Fact]
+    public void ValidateConfirmed_PassesWhatTheMypeVouchedFor_AndLeavesARecordOfIt()
+    {
+        var extraction = CreateFirstInvoiceExtraction();
+
+        var result = _validator.ValidateConfirmed(
+            extraction.IssuerData,
+            extraction.PayerData,
+            extraction.Metadata,
+            extraction.Amounts,
+            new DateTime(2026, 4, 1));
+
+        Assert.Equal(InvoiceConsistencyStatus.PASSED, result.Status);
+        Assert.Contains(result.Issues, issue =>
+            issue.Code == "MYPE_CONFIRMED_DATA" &&
+            issue.Severity == InvoiceValidationSeverity.WARNING);
+    }
+
+    [Fact]
+    public void ValidateConfirmed_StillReviewsTotalsThatDoNotAddUp()
+    {
+        var extraction = CreateFirstInvoiceExtraction();
+        var amounts = InvoiceAmounts.Create(
+            Money.Of(1398.30m, Currency.PEN),
+            Money.Of(251.70m, Currency.PEN),
+            Money.Zero(Currency.PEN),
+            Money.Of(1600m, Currency.PEN));
+
+        var result = _validator.ValidateConfirmed(
+            extraction.IssuerData,
+            extraction.PayerData,
+            extraction.Metadata,
+            amounts,
+            new DateTime(2026, 4, 1));
+
+        Assert.Equal(InvoiceConsistencyStatus.REQUIRES_REVIEW, result.Status);
+        Assert.Contains(result.Issues, issue => issue.Code == "TOTALS_DO_NOT_RECONCILE");
+    }
+
     private OcrExtractionResult CreateFirstInvoiceExtraction()
     {
         var items = _resolver.Resolve(

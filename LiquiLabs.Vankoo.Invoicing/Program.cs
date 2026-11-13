@@ -3,17 +3,20 @@ using Amazon;
 using LiquiLabs.Vankoo.Invoicing.Application.Behaviors;
 using LiquiLabs.Vankoo.Invoicing.Application.Interfaces;
 using LiquiLabs.Vankoo.Invoicing.Application.Internal.Files;
+using LiquiLabs.Vankoo.Invoicing.Application.Internal.Funding;
 using LiquiLabs.Vankoo.Invoicing.Application.Internal.Ocr;
 using LiquiLabs.Vankoo.Invoicing.Domain.Repositories;
 using LiquiLabs.Vankoo.Invoicing.Domain.Services;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Brokers.Kafka;
 using Amazon.Runtime;
 using Amazon.S3;
+using Confluent.Kafka;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Configuration.Settings;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.ExternalServices.Ocr.Azure;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.ExternalServices.Ocr.Azure.Mappers;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.HealthChecks;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Persistence.MongoDB.Contexts;
+using LiquiLabs.Vankoo.Invoicing.Infrastructure.Persistence.MongoDB.Mappings;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Persistence.MongoDB.Repositories;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Storage;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Workers;
@@ -35,12 +38,14 @@ var builder = WebApplication.CreateBuilder(args);
 // 1. CONFIGURACIÓN DE SERIALIZACIÓN (UUID v7 y Decimales)
 // Esto asegura que los Guids se guarden como UUIDs estándar legibles en Mongo
 BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
+InvoiceClassMap.Register();
 
 // 2. CARGA DE CONFIGURACIONES (IOptions Pattern)
 builder.Services.Configure<DbSettings>(builder.Configuration.GetSection("DbSettings"));
 builder.Services.Configure<TokenSettings>(builder.Configuration.GetSection("TokenSettings"));
 builder.Services.Configure<AzureOcrSettings>(builder.Configuration.GetSection("AzureOcrSettings"));
 builder.Services.Configure<KafkaSettings>(builder.Configuration.GetSection("KafkaSettings"));
+builder.Services.Configure<AuctionLifecycleConsumerSettings>(builder.Configuration.GetSection("AuctionLifecycleConsumerSettings"));
 builder.Services.Configure<OcrWorkerSettings>(builder.Configuration.GetSection("OcrWorkerSettings"));
 builder.Services.Configure<MinioSettings>(builder.Configuration.GetSection("MinioSettings"));
 builder.Services.Configure<AwsS3Settings>(builder.Configuration.GetSection("AwsS3Settings"));
@@ -97,12 +102,10 @@ builder.Services.AddHealthChecks()
     .AddMongoDb(
         failureStatus: HealthStatus.Unhealthy,
         tags: ["ready"])
-    // Kafka:    degradado — la factura se persiste igual, solo falla la publicación del evento
-    .AddKafka(
-        setup =>
-        {
-            setup.BootstrapServers = builder.Configuration["KafkaSettings:BootstrapServers"];
-        },
+    // Kafka:    degradado — la factura se persiste igual, solo falla la publicación del evento.
+    // Pide los metadatos del broker en lugar de publicar en un tópico de prueba (ver KafkaHealthCheck).
+    .AddCheck<KafkaHealthCheck>(
+        name: "kafka",
         failureStatus: HealthStatus.Degraded,
         tags: ["ready"])
     // Object storage: degradado — las subidas fallarían pero el servicio sigue en pie
@@ -133,15 +136,45 @@ builder.Services.AddValidatorsFromAssembly(typeof(Program).Assembly);
 // 8. REPOSITORIOS, SERVICIOS DE DOMINIO E INFRAESTRUCTURA
 builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
 builder.Services.AddScoped<IOcrTaskRepository, OcrTaskRepository>();
+builder.Services.AddScoped<IMypeVerificationRepository, MypeVerificationRepository>();
 builder.Services.AddScoped<IOcrService, AzureOcrService>();
 builder.Services.AddSingleton<InvoiceFileInspector>();
 builder.Services.AddSingleton<InvoiceLineItemResolver>();
 builder.Services.AddSingleton<InvoiceConsistencyValidator>();
+builder.Services.AddScoped<EligibleInvoicePublisher>();
 builder.Services.AddScoped<OcrResultProcessor>();
 builder.Services.AddSingleton<AzureOcrMapper>();
 builder.Services.AddSingleton<MongoContext>();
 builder.Services.AddSingleton<IEventBus, KafkaEventBus>();
+builder.Services.AddSingleton<IAuctionLifecycleDeadLetterPublisher>(sp =>
+{
+    var kafka = sp.GetRequiredService<IOptions<KafkaSettings>>().Value;
+    var producer = new ProducerBuilder<string?, string>(kafka.ToProducerConfig($"{kafka.ClientId}-dlq")).Build();
+    return new AuctionLifecycleDeadLetterPublisher(
+        producer, sp.GetRequiredService<IOptions<AuctionLifecycleConsumerSettings>>());
+});
+builder.Services.AddSingleton<Func<IConsumer<string?, string>>>(sp => () =>
+{
+    var kafka = sp.GetRequiredService<IOptions<KafkaSettings>>().Value;
+    var consumerSettings = sp.GetRequiredService<IOptions<AuctionLifecycleConsumerSettings>>().Value;
+    return new ConsumerBuilder<string?, string>(new ConsumerConfig
+    {
+        GroupId = consumerSettings.GroupId,
+        ClientId = $"{kafka.ClientId}-consumer",
+        EnableAutoCommit = false,
+        AutoOffsetReset = Enum.Parse<AutoOffsetReset>(consumerSettings.AutoOffsetReset, ignoreCase: true)
+    }.WithConnection(kafka)).Build();
+});
+builder.Services.AddSingleton<AuctionLifecycleMessageProcessor>();
+builder.Services.AddHostedService<AuctionLifecycleConsumer>();
 builder.Services.AddHostedService<OcrTaskWorker>();
+builder.Services.AddSingleton<ProfileKycMessageHandler>(sp => new ProfileKycMessageHandler(
+    sp.GetRequiredService<IServiceScopeFactory>(),
+    sp.GetRequiredService<ILogger<ProfileKycMessageHandler>>()));
+builder.Services.AddSingleton<Func<IProfileEventStream>>(sp => () => new KafkaProfileEventStream(
+    sp.GetRequiredService<IOptions<KafkaSettings>>().Value,
+    sp.GetRequiredService<ILogger<KafkaProfileEventStream>>()));
+builder.Services.AddHostedService<ProfileKycStatusConsumer>();
 
 var app = builder.Build();
 

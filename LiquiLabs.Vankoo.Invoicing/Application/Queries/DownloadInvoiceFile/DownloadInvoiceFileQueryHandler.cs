@@ -20,8 +20,10 @@ public class DownloadInvoiceFileQueryHandler : IRequestHandler<DownloadInvoiceFi
     public async Task<InvoiceFileDto> Handle(DownloadInvoiceFileQuery query, CancellationToken ct)
     {
         var invoiceId = InvoiceId.Of(query.InvoiceId);
-        var invoice = await _repository.GetByIdAsync(invoiceId, ct)
-            ?? throw new InvoiceNotFoundException(query.InvoiceId);
+        var invoice = await _repository.GetByIdAsync(invoiceId, ct);
+        // 404 y no 403: decir «es de otra MYPE» confirmaría que ese id existe.
+        if (invoice is null || invoice.MypeId != MypeId.Of(query.MypeId))
+            throw new InvoiceNotFoundException(query.InvoiceId);
 
         var stream = await _storageService.GetFileStreamAsync(invoice.Document.Key, ct);
 

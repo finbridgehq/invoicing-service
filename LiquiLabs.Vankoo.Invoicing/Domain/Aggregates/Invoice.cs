@@ -26,7 +26,9 @@ public sealed class Invoice
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
-    private readonly List<InvoiceLineItem> _items = [];
+    // Not readonly: the Mongo driver skips a readonly field when it reads the document back,
+    // without an error, and the items came back empty.
+    private List<InvoiceLineItem> _items = [];
 
     private Invoice() { }
 
@@ -102,6 +104,43 @@ public sealed class Invoice
         _items.Clear();
         _items.AddRange(result.Items);
 
+        ApplyConsistency(consistencyResult);
+    }
+
+    /// <summary>
+    /// The MYPE confirms, or corrects, what the OCR read with doubts. The invoice moves on as
+    /// if it had been read cleanly, or stays in review if the confirmed data still do not add up.
+    /// </summary>
+    public void ConfirmReview(
+        IssuerData issuer,
+        PayerData payer,
+        InvoiceMetadata metadata,
+        InvoiceAmounts amounts,
+        InvoiceConsistencyResult consistencyResult)
+    {
+        ArgumentNullException.ThrowIfNull(issuer);
+        ArgumentNullException.ThrowIfNull(payer);
+        ArgumentNullException.ThrowIfNull(metadata);
+        ArgumentNullException.ThrowIfNull(amounts);
+        ArgumentNullException.ThrowIfNull(consistencyResult);
+
+        if (Status != InvoiceStatus.REQUIRES_REVIEW)
+            throw new InvalidInvoiceStateException(Status, InvoiceStatus.REQUIRES_REVIEW, "confirm the review");
+
+        IssuerData = issuer;
+        PayerData = payer;
+        Metadata = metadata;
+        TotalAmount = amounts.Total;
+        SubtotalAmount = amounts.Subtotal;
+        TaxAmount = amounts.Tax;
+        DiscountAmount = amounts.Discount;
+        ConsistencyResult = consistencyResult;
+
+        ApplyConsistency(consistencyResult);
+    }
+
+    private void ApplyConsistency(InvoiceConsistencyResult consistencyResult)
+    {
         Status = consistencyResult.Status switch
         {
             InvoiceConsistencyStatus.PASSED => InvoiceStatus.CONSISTENCY_PASSED,
@@ -113,6 +152,43 @@ public sealed class Invoice
         IntegrationEventPublicationStatus = consistencyResult.IsEligibleForFunding
             ? IntegrationEventPublicationStatus.PENDING
             : IntegrationEventPublicationStatus.NOT_APPLICABLE;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Riesgo calificó la subasta de esta factura (AuctionEvaluated): ahora le toca a la MYPE
+    /// aceptar la oferta.
+    /// </summary>
+    public void MarkApproved()
+    {
+        if (Status != InvoiceStatus.CONSISTENCY_PASSED)
+            throw new InvalidInvoiceStateException(Status, InvoiceStatus.CONSISTENCY_PASSED, "mark as approved");
+
+        Status = InvoiceStatus.APPROVED;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Riesgo rechazó la subasta de esta factura (AuctionRejected). El motivo lo guarda Investment,
+    /// que es quien lo muestra.
+    /// </summary>
+    public void MarkNotEligibleByRisk()
+    {
+        if (Status != InvoiceStatus.CONSISTENCY_PASSED)
+            throw new InvalidInvoiceStateException(Status, InvoiceStatus.CONSISTENCY_PASSED, "mark as not eligible");
+
+        Status = InvoiceStatus.NOT_ELIGIBLE;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void MarkPublished()
+    {
+        // Desde CONSISTENCY_PASSED también: las subastas evaluadas antes de que Investment
+        // publicara AuctionEvaluated llegan publicadas sin haber pasado por APPROVED.
+        if (Status != InvoiceStatus.APPROVED && Status != InvoiceStatus.CONSISTENCY_PASSED)
+            throw new InvalidInvoiceStateException(Status, InvoiceStatus.APPROVED, "mark as published");
+
+        Status = InvoiceStatus.PUBLISHED;
         UpdatedAt = DateTime.UtcNow;
     }
 

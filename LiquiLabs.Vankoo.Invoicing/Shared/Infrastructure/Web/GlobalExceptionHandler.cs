@@ -44,6 +44,10 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 (StatusCodes.Status404NotFound,
                  new ErrorResponse(ex.ErrorCode, ex.Message)),
 
+            ForbiddenOperationException ex =>
+                (StatusCodes.Status403Forbidden,
+                 new ErrorResponse(ex.ErrorCode, ex.Message)),
+
             BusinessRuleViolationException ex =>
                 (StatusCodes.Status422UnprocessableEntity,
                  new ErrorResponse(ex.ErrorCode, ex.Message)),

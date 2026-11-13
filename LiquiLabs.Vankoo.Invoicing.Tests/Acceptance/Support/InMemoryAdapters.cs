@@ -130,3 +130,19 @@ public sealed class InMemoryOcrTaskRepository : IOcrTaskRepository
     public Task SaveAsync(OcrTask task, CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 }
+
+public sealed class InMemoryMypeVerificationRepository : IMypeVerificationRepository
+{
+    private readonly Dictionary<string, MypeVerification> _verifications = new();
+
+    public Task<MypeVerification?> GetByMypeIdAsync(MypeId mypeId, CancellationToken cancellationToken = default)
+        => Task.FromResult(_verifications.GetValueOrDefault(mypeId.Value));
+
+    public Task SaveIfNewerAsync(MypeVerification verification, CancellationToken cancellationToken = default)
+    {
+        if (!_verifications.TryGetValue(verification.Id, out var current) ||
+            current.StatusChangedAtUtc < verification.StatusChangedAtUtc)
+            _verifications[verification.Id] = verification;
+        return Task.CompletedTask;
+    }
+}

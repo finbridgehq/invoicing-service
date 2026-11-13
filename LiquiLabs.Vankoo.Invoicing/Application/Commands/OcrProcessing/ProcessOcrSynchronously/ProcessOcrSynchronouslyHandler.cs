@@ -36,8 +36,10 @@ public sealed class ProcessOcrSynchronouslyHandler
         CancellationToken cancellationToken)
     {
         var invoiceId = InvoiceId.Of(command.InvoiceId);
-        var invoice = await _invoiceRepository.GetByIdAsync(invoiceId, cancellationToken)
-                      ?? throw new InvoiceNotFoundException(invoiceId.Value);
+        var invoice = await _invoiceRepository.GetByIdAsync(invoiceId, cancellationToken);
+        // 404 y no 403: decir «es de otra MYPE» confirmaría que ese id existe.
+        if (invoice is null || (command.MypeId is not null && invoice.MypeId != MypeId.Of(command.MypeId)))
+            throw new InvoiceNotFoundException(invoiceId.Value);
 
         if (invoice.Status is InvoiceStatus.CONSISTENCY_PASSED
             or InvoiceStatus.REQUIRES_REVIEW

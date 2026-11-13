@@ -108,11 +108,40 @@ Azure Blob Storage requeriría un adapter `AzureBlobStorageService` que implemen
 mapee el bucket a un container. No se agregan capacidades específicas de proveedor al puerto hasta
 que exista un caso de uso que las necesite.
 
+### Conexión con Kafka (local y Azure Event Hubs)
+
+Todos los clientes de Kafka (el bus de eventos, la DLQ, los dos consumidores y el health check) toman
+la conexión de `KafkaSettings` con `WithConnection` (`Infrastructure/Brokers/Kafka/KafkaClientConfigExtensions.cs`).
+En local es el Kafka del compose sin autenticación (`SecurityProtocol=Plaintext`). En Azure el broker es
+un namespace de **Azure Event Hubs** con endpoint de Kafka, y la Container App define:
+
+| Variable | Valor en Azure |
+|---|---|
+| `KafkaSettings__BootstrapServers` | `<namespace>.servicebus.windows.net:9093` |
+| `KafkaSettings__SecurityProtocol` | `SaslSsl` |
+| `KafkaSettings__SaslMechanism` | `Plain` |
+| `KafkaSettings__SaslUsername` | `$ConnectionString` (literal) |
+| `KafkaSettings__SaslPassword` | Cadena de conexión de la regla `invoicing` (secret de la Container App) |
+| `KafkaSettings__RequestTimeoutMs` | `60000` (Event Hubs exige más de 20 s) |
+| `KafkaSettings__MessageTimeoutMs` | `120000` (mayor que el anterior) |
+| `KafkaSettings__MetadataMaxAgeMs` | `180000` (Azure corta las conexiones inactivas a los 240 s) |
+| `KafkaSettings__SocketKeepaliveEnable` | `true` |
+
+Event Hubs no crea tópicos desde los clientes: todos los que usa Invoicing (`vankoo.profile.events`,
+`investment.auction-lifecycle.v1`, `invoicing.invoice-eligible-for-funding` y
+`invoicing.auction-lifecycle.dlq`) los crea la capa `messaging` de vankoo-infra. Por eso el health
+check de Kafka (`KafkaHealthCheck`) pide los metadatos del broker en lugar de publicar en un tópico
+de prueba.
+
 ---
 
 ## Workers en background
 
 `OcrTaskWorker` (`Infrastructure/Workers/`) es un `BackgroundService` que hace polling a MongoDB buscando tareas OCR pendientes. Su configuración está en `OcrWorkerSettings`. No bloquea el pipeline HTTP.
+
+`ProfileKycStatusConsumer` (`Infrastructure/Brokers/Kafka/`) es un `BackgroundService` que lee `CompanyKycStatusChanged` v1 de `vankoo.profile.events` (grupo `invoicing-profile-kyc-v1`, desde `Earliest`; contrato en `docs/contracts/profile-events.md` de vankoo-profile-service). Lee con `KafkaProfileEventStream` (detrás de `IProfileEventStream`, para probar el bucle sin broker) y aplica cada mensaje con `ProfileKycMessageHandler`, que manda `RecordMypeKycStatusCommand`, que guarda el último estado KYC de la MYPE en la colección `MypeVerifications` (solo si es más nuevo que el que hay, por `occurredAt`), y reintenta con espera creciente (1 s hasta 60 s) si no puede guardarlo. El offset se confirma después. Los demás eventos de Profile se saltan. Su configuración está en `KafkaSettings` (`ProfileEventsTopic`, `ProfileKycGroupId`, `ProfileKycAutoOffsetReset`, `ProfileKycConsumerEnabled`).
+
+`UploadInvoiceCommandHandler` rechaza con **403 `MYPE_NOT_VERIFIED`** (`ForbiddenOperationException`) a una MYPE cuyo último estado no es `VERIFIED`, también si Profile nunca avisó de ninguno.
 
 ---
 

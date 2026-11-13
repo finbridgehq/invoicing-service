@@ -3,6 +3,7 @@ using LiquiLabs.Vankoo.Invoicing.Application.Behaviors;
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.UploadInvoice;
 using LiquiLabs.Vankoo.Invoicing.Application.Interfaces;
 using LiquiLabs.Vankoo.Invoicing.Application.Internal.Files;
+using LiquiLabs.Vankoo.Invoicing.Application.Internal.Funding;
 using LiquiLabs.Vankoo.Invoicing.Application.Internal.Ocr;
 using LiquiLabs.Vankoo.Invoicing.Domain.Repositories;
 using LiquiLabs.Vankoo.Invoicing.Domain.Services;
@@ -25,6 +26,7 @@ public sealed class InvoicingTestHost : IDisposable
     public StubOcrService Ocr { get; } = new();
     public RecordingEventBus EventBus { get; } = new();
     public InMemoryOcrTaskRepository OcrTasks { get; } = new();
+    public InMemoryMypeVerificationRepository MypeVerifications { get; } = new();
 
     public InvoicingTestHost()
     {
@@ -44,9 +46,11 @@ public sealed class InvoicingTestHost : IDisposable
         services.AddSingleton<IOcrService>(Ocr);
         services.AddSingleton<IEventBus>(EventBus);
         services.AddSingleton<IOcrTaskRepository>(OcrTasks);
+        services.AddSingleton<IMypeVerificationRepository>(MypeVerifications);
         services.AddSingleton<InvoiceFileInspector>();
         services.AddSingleton<InvoiceLineItemResolver>();
         services.AddSingleton<InvoiceConsistencyValidator>();
+        services.AddScoped<EligibleInvoicePublisher>();
         services.AddScoped<OcrResultProcessor>();
 
         _provider = services.BuildServiceProvider();
@@ -54,11 +58,23 @@ public sealed class InvoicingTestHost : IDisposable
 
     public InvoiceLineItemResolver LineItemResolver => _provider.GetRequiredService<InvoiceLineItemResolver>();
 
+    /// <summary>Para armar un controlador con el mismo MediatR que los escenarios.</summary>
+    public IServiceProvider Services => _provider;
+
+    public IServiceScopeFactory ScopeFactory => _provider.GetRequiredService<IServiceScopeFactory>();
+
     public async Task<TResponse> SendAsync<TResponse>(IRequest<TResponse> request)
     {
         await using var scope = _provider.CreateAsyncScope();
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
         return await mediator.Send(request);
+    }
+
+    public async Task SendAsync(IRequest request)
+    {
+        await using var scope = _provider.CreateAsyncScope();
+        var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+        await mediator.Send(request);
     }
 
     public void Dispose() => _provider.Dispose();

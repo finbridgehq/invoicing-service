@@ -2,6 +2,7 @@ using LiquiLabs.Vankoo.Invoicing.Application.Interfaces;
 using LiquiLabs.Vankoo.Invoicing.Application.Internal.Files;
 using LiquiLabs.Vankoo.Invoicing.Domain.Aggregates;
 using LiquiLabs.Vankoo.Invoicing.Domain.Events;
+using LiquiLabs.Vankoo.Invoicing.Domain.Exceptions;
 using LiquiLabs.Vankoo.Invoicing.Domain.Repositories;
 using LiquiLabs.Vankoo.Invoicing.Domain.ValueObjects;
 using MediatR;
@@ -14,22 +15,30 @@ public class UploadInvoiceCommandHandler : IRequestHandler<UploadInvoiceCommand,
     private readonly IStorageService _storageService;
     private readonly IInvoiceRepository _repository;
     private readonly InvoiceFileInspector _fileInspector;
+    private readonly IMypeVerificationRepository _verifications;
     private readonly IMediator _mediator;
 
     public UploadInvoiceCommandHandler(
         IStorageService storageService,
         IInvoiceRepository repository,
         InvoiceFileInspector fileInspector,
+        IMypeVerificationRepository verifications,
         IMediator mediator)
     {
         _storageService = storageService;
         _repository = repository;
         _fileInspector = fileInspector;
+        _verifications = verifications;
         _mediator = mediator;
     }
 
     public async Task<string> Handle(UploadInvoiceCommand command, CancellationToken ct)
     {
+        // Sin noticia de Profile, la MYPE cuenta como no verificada.
+        var verification = await _verifications.GetByMypeIdAsync(MypeId.Of(command.MypeId), ct);
+        if (verification is not { IsVerified: true })
+            throw new MypeNotVerifiedException();
+
         await using var bufferedFile = new MemoryStream();
         await command.FileStream.CopyToAsync(bufferedFile, ct);
         bufferedFile.Position = 0;
