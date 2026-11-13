@@ -102,12 +102,10 @@ builder.Services.AddHealthChecks()
     .AddMongoDb(
         failureStatus: HealthStatus.Unhealthy,
         tags: ["ready"])
-    // Kafka:    degradado — la factura se persiste igual, solo falla la publicación del evento
-    .AddKafka(
-        setup =>
-        {
-            setup.BootstrapServers = builder.Configuration["KafkaSettings:BootstrapServers"];
-        },
+    // Kafka:    degradado — la factura se persiste igual, solo falla la publicación del evento.
+    // Pide los metadatos del broker en lugar de publicar en un tópico de prueba (ver KafkaHealthCheck).
+    .AddCheck<KafkaHealthCheck>(
+        name: "kafka",
         failureStatus: HealthStatus.Degraded,
         tags: ["ready"])
     // Object storage: degradado — las subidas fallarían pero el servicio sigue en pie
@@ -151,15 +149,7 @@ builder.Services.AddSingleton<IEventBus, KafkaEventBus>();
 builder.Services.AddSingleton<IAuctionLifecycleDeadLetterPublisher>(sp =>
 {
     var kafka = sp.GetRequiredService<IOptions<KafkaSettings>>().Value;
-    var producer = new ProducerBuilder<string?, string>(new ProducerConfig
-    {
-        BootstrapServers = kafka.BootstrapServers,
-        ClientId = $"{kafka.ClientId}-dlq",
-        Acks = Enum.Parse<Acks>(kafka.Acks, ignoreCase: true),
-        EnableIdempotence = kafka.EnableIdempotence,
-        MessageTimeoutMs = kafka.MessageTimeoutMs,
-        MessageSendMaxRetries = kafka.Retries
-    }).Build();
+    var producer = new ProducerBuilder<string?, string>(kafka.ToProducerConfig($"{kafka.ClientId}-dlq")).Build();
     return new AuctionLifecycleDeadLetterPublisher(
         producer, sp.GetRequiredService<IOptions<AuctionLifecycleConsumerSettings>>());
 });
@@ -169,12 +159,11 @@ builder.Services.AddSingleton<Func<IConsumer<string?, string>>>(sp => () =>
     var consumerSettings = sp.GetRequiredService<IOptions<AuctionLifecycleConsumerSettings>>().Value;
     return new ConsumerBuilder<string?, string>(new ConsumerConfig
     {
-        BootstrapServers = kafka.BootstrapServers,
         GroupId = consumerSettings.GroupId,
         ClientId = $"{kafka.ClientId}-consumer",
         EnableAutoCommit = false,
         AutoOffsetReset = Enum.Parse<AutoOffsetReset>(consumerSettings.AutoOffsetReset, ignoreCase: true)
-    }).Build();
+    }.WithConnection(kafka)).Build();
 });
 builder.Services.AddSingleton<AuctionLifecycleMessageProcessor>();
 builder.Services.AddHostedService<AuctionLifecycleConsumer>();
