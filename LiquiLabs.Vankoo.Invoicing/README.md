@@ -146,7 +146,7 @@ Base path: `http://localhost:8082/api/v1`
 | Método | Ruta | Descripción |
 |---|---|---|
 | `POST` | `/invoices` | Sube una factura (multipart/form-data). 403 `MYPE_NOT_VERIFIED` si la MYPE no pasó el KYC |
-| `GET` | `/invoices` | Las facturas de la MYPE que llama, la más reciente primero. Filtros opcionales: `search` (número, RUC o nombre del pagador), `status` (un `InvoiceStatus`), `from` (emitidas desde ese día, `YYYY-MM-DD`), y `page`/`pageSize` (10 por defecto, 100 como máximo). Responde `{items, page, pageSize, totalItems}` |
+| `GET` | `/invoices` | Las facturas de la MYPE que llama, la más reciente primero. Filtros opcionales: `search` (número, RUC o nombre del pagador), `status` (uno o varios `InvoiceStatus` separados por comas, p. ej. `OCR_PROCESSING,DATA_EXTRACTED`; entra la factura que tenga cualquiera), `from` (emitidas desde ese día, `YYYY-MM-DD`), y `page`/`pageSize` (10 por defecto, 100 como máximo). Responde `{items, page, pageSize, totalItems}` |
 | `GET` | `/invoices/{id}` | El detalle de una factura |
 | `GET` | `/invoices/{id}/file` | Descarga el archivo de una factura |
 | `POST` | `/invoices/{id}/ocr/sync` | Procesa OCR de forma síncrona |

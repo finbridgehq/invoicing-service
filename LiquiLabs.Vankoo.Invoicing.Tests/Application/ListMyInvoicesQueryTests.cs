@@ -102,6 +102,9 @@ public sealed class ListMyInvoicesQueryTests : IDisposable
         Assert.Equal([e10], (await _host.SendAsync(new ListMyInvoicesQuery(_mype, Search: "e001-10"))).Items.Select(i => i.Id));
         Assert.Equal([e11], (await _host.SendAsync(new ListMyInvoicesQuery(_mype, Search: OtherPayerRuc))).Items.Select(i => i.Id));
         Assert.Equal([unread], (await _host.SendAsync(new ListMyInvoicesQuery(_mype, Status: "UPLOADED"))).Items.Select(i => i.Id));
+        // Varios estados separados por comas: la web pide así los que muestra con la misma etiqueta.
+        Assert.Equal([e11, e10], (await _host.SendAsync(new ListMyInvoicesQuery(_mype, Status: "CONSISTENCY_PASSED, SUNAT_VALIDATED"))).Items.Select(i => i.Id));
+        Assert.Equal([unread, e11, e10], (await _host.SendAsync(new ListMyInvoicesQuery(_mype, Status: "UPLOADED,CONSISTENCY_PASSED"))).Items.Select(i => i.Id));
         // El 15 de octubre deja fuera la emitida el 1; la no leída cuenta por su día de subida, hoy.
         Assert.Equal([unread, e11], (await _host.SendAsync(new ListMyInvoicesQuery(_mype, From: new DateOnly(2026, 10, 15)))).Items.Select(i => i.Id));
     }
@@ -123,6 +126,8 @@ public sealed class ListMyInvoicesQueryTests : IDisposable
 
     [Theory]
     [InlineData("PAGADA", 1, 10)]
+    [InlineData("UPLOADED,PAGADA", 1, 10)]
+    [InlineData(" , ", 1, 10)]
     [InlineData(null, 0, 10)]
     [InlineData(null, 1, 101)]
     public async Task RefusesAnUnknownStatusOrAnInvalidPage(string? status, int page, int pageSize)

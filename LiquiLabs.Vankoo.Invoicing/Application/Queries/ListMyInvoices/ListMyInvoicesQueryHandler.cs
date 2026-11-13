@@ -23,10 +23,11 @@ public sealed class ListMyInvoicesQueryHandler : IRequestHandler<ListMyInvoicesQ
     public async Task<InvoicePageResponse> Handle(ListMyInvoicesQuery query, CancellationToken cancellationToken)
     {
         var invoices = await _repository.GetByMypeIdAsync(MypeId.Of(query.MypeId), cancellationToken);
+        var statuses = ListMyInvoicesQuery.StatusNames(query.Status);
 
         var matching = invoices
             .Where(invoice => MatchesSearch(invoice, query.Search))
-            .Where(invoice => MatchesStatus(invoice, query.Status))
+            .Where(invoice => MatchesStatus(invoice, statuses))
             .Where(invoice => MatchesFrom(invoice, query.From))
             .OrderByDescending(invoice => invoice.CreatedAt)
             .ToList();
@@ -53,8 +54,8 @@ public sealed class ListMyInvoicesQueryHandler : IRequestHandler<ListMyInvoicesQ
             .Any(value => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true);
     }
 
-    private static bool MatchesStatus(Invoice invoice, string? status)
-        => string.IsNullOrWhiteSpace(status) || invoice.Status.ToString() == status;
+    private static bool MatchesStatus(Invoice invoice, IReadOnlyList<string> statuses)
+        => statuses.Count == 0 || statuses.Contains(invoice.Status.ToString());
 
     private static bool MatchesFrom(Invoice invoice, DateOnly? from)
     {
