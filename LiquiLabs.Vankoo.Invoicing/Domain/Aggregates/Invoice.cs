@@ -26,7 +26,9 @@ public sealed class Invoice
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
-    private readonly List<InvoiceLineItem> _items = [];
+    // Not readonly: the Mongo driver skips a readonly field when it reads the document back,
+    // without an error, and the items came back empty.
+    private List<InvoiceLineItem> _items = [];
 
     private Invoice() { }
 

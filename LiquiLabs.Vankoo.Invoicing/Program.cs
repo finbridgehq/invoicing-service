@@ -15,6 +15,7 @@ using LiquiLabs.Vankoo.Invoicing.Infrastructure.ExternalServices.Ocr.Azure;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.ExternalServices.Ocr.Azure.Mappers;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.HealthChecks;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Persistence.MongoDB.Contexts;
+using LiquiLabs.Vankoo.Invoicing.Infrastructure.Persistence.MongoDB.Mappings;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Persistence.MongoDB.Repositories;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Storage;
 using LiquiLabs.Vankoo.Invoicing.Infrastructure.Workers;
@@ -36,6 +37,7 @@ var builder = WebApplication.CreateBuilder(args);
 // 1. CONFIGURACIÓN DE SERIALIZACIÓN (UUID v7 y Decimales)
 // Esto asegura que los Guids se guarden como UUIDs estándar legibles en Mongo
 BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
+InvoiceClassMap.Register();
 
 // 2. CARGA DE CONFIGURACIONES (IOptions Pattern)
 builder.Services.Configure<DbSettings>(builder.Configuration.GetSection("DbSettings"));
