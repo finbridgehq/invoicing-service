@@ -15,13 +15,12 @@ public sealed class KafkaProfileEventStream : IProfileEventStream
         _topic = settings.ProfileEventsTopic;
         var config = new ConsumerConfig
         {
-            BootstrapServers = settings.BootstrapServers,
             GroupId = settings.ProfileKycGroupId,
             ClientId = $"{settings.ClientId}-profile-kyc",
             AutoOffsetReset = Enum.Parse<AutoOffsetReset>(settings.ProfileKycAutoOffsetReset, ignoreCase: true),
             EnableAutoCommit = false,
             AllowAutoCreateTopics = true
-        };
+        }.WithConnection(settings);
         _consumer = new ConsumerBuilder<string, string>(config).Build();
         _consumer.Subscribe(_topic);
         _logger.LogInformation("Consumiendo {Topic} como grupo {GroupId}", _topic, settings.ProfileKycGroupId);

@@ -18,17 +18,7 @@ public sealed class KafkaEventBus : IEventBus, IDisposable
         _logger = logger;
 
         var kafkaSettings = settings.Value;
-        var config = new ProducerConfig
-        {
-            BootstrapServers = kafkaSettings.BootstrapServers,
-            ClientId = kafkaSettings.ClientId,
-            Acks = Enum.Parse<Acks>(kafkaSettings.Acks, ignoreCase: true),
-            EnableIdempotence = kafkaSettings.EnableIdempotence,
-            MessageTimeoutMs = kafkaSettings.MessageTimeoutMs,
-            MessageSendMaxRetries = kafkaSettings.Retries
-        };
-
-        _producer = new ProducerBuilder<string, string>(config).Build();
+        _producer = new ProducerBuilder<string, string>(kafkaSettings.ToProducerConfig(kafkaSettings.ClientId)).Build();
     }
 
     //ME PARECE QUE SE ESTA CREANDO EL TOPICO DINAMICAMENTE
