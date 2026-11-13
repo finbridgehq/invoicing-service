@@ -1,0 +1,13 @@
+﻿services:
+  liquilabs.vankoo.invoicing:
+    image: liquilabs.vankoo.invoicing
+    build:
+      context: .
+      dockerfile: LiquiLabs.Vankoo.Invoicing/Dockerfile
+    networks:
+      - vankoo-network
+
+networks:
+  vankoo-network:
+    external: true
+
