@@ -155,6 +155,43 @@ public sealed class Invoice
         UpdatedAt = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// Riesgo calificó la subasta de esta factura (AuctionEvaluated): ahora le toca a la MYPE
+    /// aceptar la oferta.
+    /// </summary>
+    public void MarkApproved()
+    {
+        if (Status != InvoiceStatus.CONSISTENCY_PASSED)
+            throw new InvalidInvoiceStateException(Status, InvoiceStatus.CONSISTENCY_PASSED, "mark as approved");
+
+        Status = InvoiceStatus.APPROVED;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Riesgo rechazó la subasta de esta factura (AuctionRejected). El motivo lo guarda Investment,
+    /// que es quien lo muestra.
+    /// </summary>
+    public void MarkNotEligibleByRisk()
+    {
+        if (Status != InvoiceStatus.CONSISTENCY_PASSED)
+            throw new InvalidInvoiceStateException(Status, InvoiceStatus.CONSISTENCY_PASSED, "mark as not eligible");
+
+        Status = InvoiceStatus.NOT_ELIGIBLE;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void MarkPublished()
+    {
+        // Desde CONSISTENCY_PASSED también: las subastas evaluadas antes de que Investment
+        // publicara AuctionEvaluated llegan publicadas sin haber pasado por APPROVED.
+        if (Status != InvoiceStatus.APPROVED && Status != InvoiceStatus.CONSISTENCY_PASSED)
+            throw new InvalidInvoiceStateException(Status, InvoiceStatus.APPROVED, "mark as published");
+
+        Status = InvoiceStatus.PUBLISHED;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
     public void MarkIntegrationEventPublished()
     {
         IntegrationEventPublicationStatus = IntegrationEventPublicationStatus.PUBLISHED;
