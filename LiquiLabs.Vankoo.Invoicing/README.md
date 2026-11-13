@@ -150,7 +150,7 @@ Base path: `http://localhost:8082/api/v1`
 | `GET` | `/invoices/{id}/file` | Descarga el archivo de una factura |
 | `POST` | `/invoices/{id}/ocr/sync` | Procesa OCR de forma síncrona |
 
-Las rutas de lectura (`GET`) y la subida usan la cabecera `X-User-Id`, que pone el gateway tras validar el JWT, como `MypeId`: sin ella responden 401. **Una factura de otra MYPE responde 404**, no 403, para no confirmar que ese id existe.
+Todas las rutas sobre facturas (subir, listar, ver, descargar, borrar y releer con OCR) usan la cabecera `X-User-Id`, que pone el gateway tras validar el JWT, como `MypeId`: sin ella responden 401. **Una factura de otra MYPE responde 404**, no 403, para no confirmar que ese id existe. El `OcrTaskWorker` relee la cola sin MYPE, porque no la llama nadie desde fuera.
 
 La documentación interactiva (Scalar) está disponible en entornos no productivos:
 

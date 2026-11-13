@@ -1,4 +1,5 @@
 using FluentValidation;
+using LiquiLabs.Vankoo.Invoicing.Application.Commands.DeleteInvoice;
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.OcrProcessing.ProcessOcrSynchronously;
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.RecordMypeKycStatus;
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.UploadInvoice;
@@ -142,5 +143,33 @@ public sealed class ListMyInvoicesQueryTests : IDisposable
         Assert.Equal(id, (await _host.SendAsync(new GetInvoiceByIdQuery(id, _mype))).InvoiceId);
         var file = await _host.SendAsync(new DownloadInvoiceFileQuery(id, _mype));
         Assert.Equal("application/pdf", file.ContentType);
+    }
+
+    [Fact]
+    public async Task AnotherMypesInvoice_CannotBeRereadOrDeleted()
+    {
+        await Verify(_mype);
+        var id = await Upload(_mype);
+        _host.Ocr.Extraction = Extraction("12", PayerRuc, DateTime.UtcNow.Date.AddDays(-5));
+
+        await Assert.ThrowsAsync<InvoiceNotFoundException>(() => _host.SendAsync(new ProcessOcrSynchronouslyCommand(id, _otherMype)));
+        await Assert.ThrowsAsync<InvoiceNotFoundException>(() => _host.SendAsync(new DeleteInvoiceCommand(id, _otherMype)));
+        Assert.Equal("UPLOADED", (await _host.SendAsync(new GetInvoiceByIdQuery(id, _mype))).Status);
+
+        Assert.Equal("E001-12", (await _host.SendAsync(new ProcessOcrSynchronouslyCommand(id, _mype))).FiscalInvoiceNumber);
+        await _host.SendAsync(new DeleteInvoiceCommand(id, _mype));
+        await Assert.ThrowsAsync<InvoiceNotFoundException>(() => _host.SendAsync(new GetInvoiceByIdQuery(id, _mype)));
+    }
+
+    [Fact]
+    public async Task TheOcrWorker_RereadsWithoutAMype()
+    {
+        await Verify(_mype);
+        var id = await Upload(_mype);
+        _host.Ocr.Extraction = Extraction("13", PayerRuc, DateTime.UtcNow.Date.AddDays(-5));
+
+        var details = await _host.SendAsync(new ProcessOcrSynchronouslyCommand(id));
+
+        Assert.Equal("E001-13", details.FiscalInvoiceNumber);
     }
 }

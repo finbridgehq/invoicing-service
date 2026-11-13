@@ -113,11 +113,18 @@ public sealed class InvoicesController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteInvoice(
         [FromRoute] string id,
         CancellationToken cancellationToken)
     {
-        await _mediator.Send(new DeleteInvoiceCommand(id), cancellationToken);
+        var mypeId = CallerMypeId();
+        if (mypeId is null)
+            return Unauthorized();
+
+        await _mediator.Send(new DeleteInvoiceCommand(id, mypeId), cancellationToken);
         return NoContent();
     }
 
@@ -144,13 +151,18 @@ public sealed class InvoicesController : ControllerBase
 
     [HttpPost("{id}/ocr/sync")]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ProcessOcrSync(
         [FromRoute] string id,
         CancellationToken cancellationToken)
     {
+        var mypeId = CallerMypeId();
+        if (mypeId is null)
+            return Unauthorized();
+
         var response = await _mediator.Send(
-            new ProcessOcrSynchronouslyCommand(id),
+            new ProcessOcrSynchronouslyCommand(id, mypeId),
             cancellationToken);
         return Ok(response);
     }

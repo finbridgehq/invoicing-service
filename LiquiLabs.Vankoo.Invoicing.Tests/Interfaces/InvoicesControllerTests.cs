@@ -2,6 +2,7 @@ using LiquiLabs.Vankoo.Invoicing.Application.Commands.RecordMypeKycStatus;
 using LiquiLabs.Vankoo.Invoicing.Application.Commands.UploadInvoice;
 using LiquiLabs.Vankoo.Invoicing.Application.Queries.ListMyInvoices;
 using LiquiLabs.Vankoo.Invoicing.Application.Resources;
+using LiquiLabs.Vankoo.Invoicing.Domain.Exceptions;
 using LiquiLabs.Vankoo.Invoicing.Domain.ValueObjects;
 using LiquiLabs.Vankoo.Invoicing.Interfaces.Rest.Controllers;
 using LiquiLabs.Vankoo.Invoicing.Tests.Acceptance.Support;
@@ -43,6 +44,8 @@ public sealed class InvoicesControllerTests : IDisposable
         Assert.IsType<UnauthorizedResult>(await controller.ListMyInvoices(null, null, null));
         Assert.IsType<UnauthorizedResult>(await controller.GetInvoiceById("any", default));
         Assert.IsType<UnauthorizedResult>(await controller.DownloadInvoiceFile("any", default));
+        Assert.IsType<UnauthorizedResult>(await controller.DeleteInvoice("any", default));
+        Assert.IsType<UnauthorizedResult>(await controller.ProcessOcrSync("any", default));
     }
 
     [Fact]
@@ -67,5 +70,9 @@ public sealed class InvoicesControllerTests : IDisposable
         Assert.Equal(id, Assert.IsType<InvoiceDetailsResponse>(detail.Value).InvoiceId);
         var file = Assert.IsType<FileStreamResult>(await controller.DownloadInvoiceFile(id, default));
         Assert.Equal("E001-1.pdf", file.FileDownloadName);
+
+        // A otra MYPE la factura no le existe, ni para releerla ni para borrarla.
+        await Assert.ThrowsAsync<InvoiceNotFoundException>(() => Controller(Guid.NewGuid().ToString()).DeleteInvoice(id, default));
+        Assert.IsType<NoContentResult>(await controller.DeleteInvoice(id, default));
     }
 }
