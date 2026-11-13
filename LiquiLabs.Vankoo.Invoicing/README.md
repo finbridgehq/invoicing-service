@@ -149,6 +149,7 @@ Base path: `http://localhost:8082/api/v1`
 | `GET` | `/invoices/{id}` | El detalle de una factura |
 | `GET` | `/invoices/{id}/file` | Descarga el archivo de una factura |
 | `POST` | `/invoices/{id}/ocr/sync` | Procesa OCR de forma síncrona |
+| `POST` | `/invoices/{id}/review` | La MYPE confirma, o corrige, los datos de una factura en `REQUIRES_REVIEW`: `{series, number, issueDate, dueDate, issuerRuc, payerRuc, subtotal, tax, total}`, con fechas en `YYYY-MM-DD`. Se vuelve a validar sin mirar la confianza del OCR ni los ítems. Si cuadra, pasa a `CONSISTENCY_PASSED` y se publica a riesgo como una lectura limpia; si no, queda en revisión con los nuevos avisos, o en `NOT_ELIGIBLE`. 422 `INVOICE_INVALID_STATE` si la factura no está en revisión |
 
 Todas las rutas sobre facturas (subir, listar, ver, descargar, borrar y releer con OCR) usan la cabecera `X-User-Id`, que pone el gateway tras validar el JWT, como `MypeId`: sin ella responden 401. **Una factura de otra MYPE responde 404**, no 403, para no confirmar que ese id existe. El `OcrTaskWorker` relee la cola sin MYPE, porque no la llama nadie desde fuera.
 
