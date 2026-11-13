@@ -8,7 +8,8 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # On develop a newer push must not cancel a deployment halfway through.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/develop' }}
 
 permissions:
   contents: read
@@ -134,3 +135,18 @@ jobs:
 
       - name: End analysis
         run: dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+
+  deliver:
+    name: Deliver
+    needs: [lint, build-test, sonarcloud]
+    # Only code merged into develop reaches the development environment.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop' && vars.AZURE_CLIENT_ID != ''
+    permissions:
+      contents: read
+      id-token: write # OIDC sign-in to Azure, no stored password
+    uses: finbridgehq/infra/.github/workflows/deliver-container-app.yml@develop
+    with:
+      image: invoicing-service
+      container-app: vankoo-invoicing-service
+      dockerfile: LiquiLabs.Vankoo.Invoicing/Dockerfile
+    secrets: inherit
