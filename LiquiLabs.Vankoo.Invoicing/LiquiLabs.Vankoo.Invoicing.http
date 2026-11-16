@@ -1,0 +1,30 @@
+@host = http://localhost:5132
+@invoiceId = REEMPLAZAR_CON_INVOICE_ID
+
+### Cargar una factura real (Rider HTTP Client)
+POST {{host}}/api/v1/invoices
+Content-Type: multipart/form-data; boundary=VankooBoundary
+
+--VankooBoundary
+Content-Disposition: form-data; name="mypeId"
+
+11111111-1111-1111-1111-111111111111
+--VankooBoundary
+Content-Disposition: form-data; name="file"; filename="factura.pdf"
+Content-Type: application/pdf
+
+< C:/ruta/a/factura.pdf
+--VankooBoundary--
+
+### Procesar OCR y obtener extracción + consistencia
+POST {{host}}/api/v1/invoices/{{invoiceId}}/ocr/sync
+
+### Consultar el estado y resultado persistido
+GET {{host}}/api/v1/invoices/{{invoiceId}}
+Accept: application/json
+
+### Eliminar una factura y su archivo
+DELETE {{host}}/api/v1/invoices/{{invoiceId}}
+
+### Eliminar todas las facturas y sus archivos (solo Development)
+DELETE {{host}}/api/v1/invoices?confirm=true
